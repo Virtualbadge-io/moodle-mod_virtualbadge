@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="mod/virtualbadge/db" VERSION="20261024" COMMENT="XMLDB file for Moodle mod/virtualbadge"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
+  <TABLES>
+    <TABLE NAME="virtualbadge" COMMENT="Virtualbadge activity instances">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="course" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="name" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="intro" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="introformat" TYPE="int" LENGTH="4" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="org" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false" COMMENT="Organisation whose API key is used"/>
+        <FIELD NAME="templateid" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="templatename" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="fieldmap" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON object: template field name to value with placeholders"/>
+        <FIELD NAME="triggertype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="completion" SEQUENCE="false" COMMENT="completion, approval, grade or manual"/>
+        <FIELD NAME="mingrade" TYPE="number" LENGTH="10" NOTNULL="false" SEQUENCE="false" DECIMALS="5" COMMENT="Minimum grade in percent for triggertype grade"/>
+        <FIELD NAME="gradeitemid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Grade item for triggertype grade, null for the course total"/>
+        <FIELD NAME="sendemail" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false"/>
+        <FIELD NAME="completionissued" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Activity is complete once the certificate is issued"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="course" TYPE="foreign" FIELDS="course" REFTABLE="course" REFFIELDS="id"/>
+      </KEYS>
+    </TABLE>
+    <TABLE NAME="virtualbadge_issues" COMMENT="Certificates and badges issued per user">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="virtualbadgeid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="userid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="org" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="templateid" TYPE="char" LENGTH="100" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="reference" TYPE="char" LENGTH="255" NOTNULL="true" SEQUENCE="false" COMMENT="Reference stored in the recipient metadata in Virtualbadge"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="queued" SEQUENCE="false" COMMENT="queued, pending, issued, revoked, deleted, retrying, failed"/>
+        <FIELD NAME="source" TYPE="char" LENGTH="20" NOTNULL="true" SEQUENCE="false" COMMENT="What queued the issue: completion, grade, manual, retroactive"/>
+        <FIELD NAME="remoteid" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="replaceremoteid" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false" COMMENT="Recipient to be replaced by the queued issue"/>
+        <FIELD NAME="previousremoteid" TYPE="char" LENGTH="100" NOTNULL="false" SEQUENCE="false" COMMENT="Recipient replaced by the current one"/>
+        <FIELD NAME="certificateurl" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="validationurl" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="walleturl" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="completedat" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="attempts" TYPE="int" LENGTH="5" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="emailsent" TYPE="int" LENGTH="5" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Emails requested again from Moodle"/>
+        <FIELD NAME="timeemailsent" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="lasterror" TYPE="text" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="timeissued" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false"/>
+        <FIELD NAME="timechecked" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Last check of the certificate in Virtualbadge"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="virtualbadgeid" TYPE="foreign" FIELDS="virtualbadgeid" REFTABLE="virtualbadge" REFFIELDS="id"/>
+        <KEY NAME="userid" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="virtualbadgeid-userid" UNIQUE="true" FIELDS="virtualbadgeid, userid"/>
+        <INDEX NAME="reference" UNIQUE="true" FIELDS="reference"/>
+        <INDEX NAME="status" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+  </TABLES>
+</XMLDB>

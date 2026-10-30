@@ -1,0 +1,157 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_virtualbadge/trainer_view
+
+    Status list of all participants for trainers.
+
+    Example context (json):
+    {
+        "warning": "The template Teilnahmezertifikat has new fields: Ort.",
+        "editurl": "https://example.org/course/modedit.php?update=9",
+        "condition": "Issued on course completion.",
+        "templatename": "Teilnahmezertifikat",
+        "summary": [{"status": {"label": "Issued", "class": "bg-success"}, "count": 2}],
+        "hasrows": true,
+        "showemail": true,
+        "selectform": {"formid": "mod_virtualbadge-select1", "url": "https://example.org/mod/virtualbadge/view.php?id=9",
+            "sesskey": "abc", "label": "Release selected"},
+        "rows": [{
+            "userid": 4,
+            "selectable": false,
+            "fullname": "Lena Albrecht",
+            "profileurl": "https://example.org/user/view.php?id=4",
+            "email": "lena@example.org",
+            "status": {"label": "Issued", "class": "bg-success"},
+            "eligible": "",
+            "timeissued": "24/10/26, 19:38",
+            "validationurl": "https://www.virtualbadge.io/certificate-validator?credential=x",
+            "error": "",
+            "emailinfo": "Email requested again 1 times, last 25/10/26, 10:00",
+            "replaced": false,
+            "action": ""
+        }],
+        "retroactiveinfo": "1 participant already meets the condition but has no certificate yet.",
+        "retroactive": "<button class=\"btn btn-secondary\">Issue to 1 participant</button>"
+    }
+}}
+<div class="mod_virtualbadge-trainer">
+    {{#warning}}
+    <div class="alert alert-warning" role="alert">
+        {{warning}}
+        {{#editurl}}<a class="alert-link ms-1" href="{{editurl}}">{{#str}} editsettings, mod_virtualbadge {{/str}}</a>{{/editurl}}
+    </div>
+    {{/warning}}
+    <h3 class="h5">{{#str}} statuslist, mod_virtualbadge {{/str}}</h3>
+    <p class="mb-2">{{templatename}}: {{condition}}</p>
+    {{#summary.0}}
+    <p class="mb-3">
+        {{#summary}}<span class="badge {{status.class}} me-2">{{status.label}}: {{count}}</span>{{/summary}}
+    </p>
+    {{/summary.0}}
+    {{#retroactive}}
+    <div class="alert alert-info d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <span>{{retroactiveinfo}}</span>
+        {{{retroactive}}}
+    </div>
+    {{/retroactive}}
+    {{#hasrows}}
+    {{#selectform}}
+    <form id="{{formid}}" method="post" action="{{url}}" class="mb-2">
+        <input type="hidden" name="sesskey" value="{{sesskey}}">
+        <input type="hidden" name="action" value="releaseselected">
+        <button type="submit" class="btn btn-secondary">{{label}}</button>
+    </form>
+    {{/selectform}}
+    <div class="table-responsive">
+        <table class="table table-striped table-sm generaltable">
+            <thead>
+                <tr>
+                    {{#selectform}}
+                    <th scope="col">
+                        <label for="{{formid}}-all" class="visually-hidden">{{#str}} selectall {{/str}}</label>
+                        <input type="checkbox" class="form-check-input" id="{{formid}}-all">
+                    </th>
+                    {{/selectform}}
+                    <th scope="col">{{#str}} fullname {{/str}}</th>
+                    {{#showemail}}<th scope="col">{{#str}} email {{/str}}</th>{{/showemail}}
+                    <th scope="col">{{#str}} status, mod_virtualbadge {{/str}}</th>
+                    <th scope="col">{{#str}} timeissued, mod_virtualbadge {{/str}}</th>
+                    <th scope="col">{{#str}} error {{/str}}</th>
+                    <th scope="col"><span class="visually-hidden">{{#str}} actions {{/str}}</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {{#rows}}
+                <tr>
+                    {{#selectform}}
+                    <td>
+                        {{#selectable}}
+                        <label for="{{formid}}-{{userid}}" class="visually-hidden">
+                            {{#str}} selectparticipant, mod_virtualbadge, {{fullname}} {{/str}}
+                        </label>
+                        <input type="checkbox" class="form-check-input" id="{{formid}}-{{userid}}" name="userids[]" value="{{userid}}"
+                            form="{{formid}}">
+                        {{/selectable}}
+                    </td>
+                    {{/selectform}}
+                    <td><a href="{{profileurl}}">{{fullname}}</a></td>
+                    {{#showemail}}<td>{{email}}</td>{{/showemail}}
+                    <td>
+                        <span class="badge {{status.class}}">{{status.label}}</span>
+                        {{#eligible}}<span class="badge bg-light text-dark border ms-1">{{eligible}}</span>{{/eligible}}
+                    </td>
+                    <td>
+                        {{timeissued}}
+                        {{#validationurl}}<a class="ms-1" href="{{validationurl}}" target="_blank" rel="noopener">{{#str}} openvalidation, mod_virtualbadge {{/str}}</a>{{/validationurl}}
+                        {{#replaced}}<div class="small text-muted">{{#str}} replacedinfo, mod_virtualbadge {{/str}}</div>{{/replaced}}
+                        {{#emailinfo}}<div class="small text-muted">{{emailinfo}}</div>{{/emailinfo}}
+                    </td>
+                    <td class="small text-danger">{{error}}</td>
+                    <td><div class="d-flex flex-wrap gap-1">{{{action}}}</div></td>
+                </tr>
+                {{/rows}}
+            </tbody>
+        </table>
+    </div>
+    {{/hasrows}}
+    {{#selectform}}
+    {{#js}}
+    (function() {
+        var all = document.getElementById('{{formid}}-all');
+        var boxes = function() {
+            return document.querySelectorAll('input[name="userids[]"][form="{{formid}}"]');
+        };
+        all.addEventListener('change', function() {
+            boxes().forEach(function(box) {
+                box.checked = all.checked;
+            });
+        });
+        boxes().forEach(function(box) {
+            box.addEventListener('change', function() {
+                all.checked = Array.prototype.every.call(boxes(), function(b) {
+                    return b.checked;
+                });
+            });
+        });
+    })();
+    {{/js}}
+    {{/selectform}}
+    {{^hasrows}}
+    <p>{{#str}} noparticipants, mod_virtualbadge {{/str}}</p>
+    {{/hasrows}}
+</div>

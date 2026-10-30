@@ -1,0 +1,58 @@
+{{!
+    This file is part of Moodle - https://moodle.org/
+
+    Moodle is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    Moodle is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+}}
+{{!
+    @template mod_virtualbadge/learner_view
+
+    Certificate of the current learner.
+
+    Example context (json):
+    {
+        "templatename": "Teilnahmezertifikat",
+        "condition": "Issued on course completion.",
+        "status": {"label": "Issued", "class": "bg-success"},
+        "hasurl": true,
+        "certificateurl": "https://app.virtualbadge.io/abc/def?token=x",
+        "validationurl": "https://www.virtualbadge.io/certificate-validator?credential=x",
+        "walleturl": null,
+        "inprogress": false,
+        "timeissued": "24. October 2026, 19:43"
+    }
+}}
+<div class="mod_virtualbadge-learner card mb-4">
+    <div class="card-body">
+        <h3 class="h5 card-title">{{templatename}}</h3>
+        <p class="mb-2">{{condition}}</p>
+        <p class="mb-3">
+            <span class="badge {{status.class}}">{{status.label}}</span>
+            {{#timeissued}}<span class="text-muted ms-2">{{#str}} issuedon, mod_virtualbadge, {{timeissued}} {{/str}}</span>{{/timeissued}}
+        </p>
+        {{#hasurl}}
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-primary" href="{{certificateurl}}" target="_blank" rel="noopener">{{#str}} opencertificate, mod_virtualbadge {{/str}}</a>
+            {{#walleturl}}
+            <a class="btn btn-secondary" href="{{walleturl}}" target="_blank" rel="noopener">{{#str}} openwallet, mod_virtualbadge {{/str}}</a>
+            {{/walleturl}}
+            {{#validationurl}}
+            <a class="btn btn-link" href="{{validationurl}}" target="_blank" rel="noopener">{{#str}} openvalidation, mod_virtualbadge {{/str}}</a>
+            {{/validationurl}}
+        </div>
+        {{/hasurl}}
+        {{^hasurl}}
+        {{#inprogress}}<p class="mb-0">{{#str}} inprogress_learner, mod_virtualbadge {{/str}}</p>{{/inprogress}}
+        {{/hasurl}}
+    </div>
+</div>
