@@ -74,17 +74,19 @@ final class backup_restore_test extends \advanced_testcase {
         $this->setAdminUser();
         $cfgen = $this->getDataGenerator()->get_plugin_generator('core_customfield');
         $category = $cfgen->create_category(['component' => 'core_course', 'area' => 'course', 'itemid' => 0]);
-        $cfgen->create_field(['categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'ort', 'name' => 'Ort']);
+        $cfgen->create_field([
+            'categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'location', 'name' => 'Location',
+        ]);
         $course = $this->getDataGenerator()->create_course();
-        $item = $this->getDataGenerator()->create_grade_item(['courseid' => $course->id, 'itemname' => 'Abschlusstest']);
+        $item = $this->getDataGenerator()->create_grade_item(['courseid' => $course->id, 'itemname' => 'Final exam']);
         $fieldmap = json_encode([
-            'Ort' => ['source' => 'coursefield:ort', 'value' => ''],
+            'Location' => ['source' => 'coursefield:location', 'value' => ''],
             'Punkte' => ['source' => 'itempoints:' . $item->id, 'value' => ''],
         ]);
         $instance = $this->getDataGenerator()->create_module('virtualbadge', [
             'course' => $course->id,
             'templateid' => 'cert_zpp',
-            'templatename' => 'Zentrale Prüfstelle',
+            'templatename' => 'Certificate – Quality Management',
             'fieldmap' => $fieldmap,
             'triggertype' => 'grade',
             'mingrade' => 70,
@@ -102,7 +104,7 @@ final class backup_restore_test extends \advanced_testcase {
 
         $copy = $DB->get_record('virtualbadge', ['id' => $newcm->instance]);
         $this->assertSame('cert_zpp', $copy->templateid);
-        $this->assertSame('Zentrale Prüfstelle', $copy->templatename);
+        $this->assertSame('Certificate – Quality Management', $copy->templatename);
         $this->assertSame($fieldmap, $copy->fieldmap);
         $this->assertSame('grade', $copy->triggertype);
         $this->assertEquals(70, $copy->mingrade);
@@ -167,8 +169,8 @@ final class backup_restore_test extends \advanced_testcase {
         $DB->set_field('virtualbadge', 'fieldmap', json_encode([
             'Name' => ['source' => 'user:fullname', 'value' => ''],
             'Hash' => ['source' => 'user:password', 'value' => ''],
-            'Kurs' => ['source' => 'course:cacherev', 'value' => ''],
-            'Text' => ['source' => 'text', 'value' => 'Teilnahme'],
+            'Course' => ['source' => 'course:cacherev', 'value' => ''],
+            'Text' => ['source' => 'text', 'value' => 'Participation'],
         ]), ['id' => $instance->id]);
         $id = $this->add_issue($instance, $student->id, issuer::STATUS_ISSUED, 'recp_1');
         $DB->update_record('virtualbadge_issues', (object) [
@@ -206,6 +208,27 @@ final class backup_restore_test extends \advanced_testcase {
         $this->assertSame('main', $DB->get_field('virtualbadge', 'org', ['course' => $byteacher]));
         $byadmin = $this->backup_and_restore($course, false);
         $this->assertSame('partner', $DB->get_field('virtualbadge', 'org', ['course' => $byadmin]));
+    }
+
+    public function test_restored_certificate_keeps_its_organisation(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course();
+        $student = $gen->create_and_enrol($course, 'student');
+        $instance = $gen->create_module('virtualbadge', ['course' => $course->id]);
+        $DB->set_field('virtualbadge', 'org', 'elsewhere', ['id' => $instance->id]);
+        $id = $this->add_issue($instance, $student->id, issuer::STATUS_ISSUED, 'recp_1');
+        $DB->set_field('virtualbadge_issues', 'org', 'elsewhere', ['id' => $id]);
+
+        $newcourseid = $this->backup_and_restore($course, true);
+
+        $restored = $DB->get_record('virtualbadge', ['course' => $newcourseid], '*', MUST_EXIST);
+        $this->assertSame('main', $restored->org);
+        $issue = $DB->get_record('virtualbadge_issues', ['virtualbadgeid' => $restored->id], '*', MUST_EXIST);
+        $this->assertSame('elsewhere', $issue->org);
+        $this->assertSame('recp_1', $issue->remoteid);
     }
 
     public function test_course_restore_with_user_data(): void {
@@ -254,7 +277,7 @@ final class backup_restore_test extends \advanced_testcase {
         $this->assertCount(1, $issues);
         $this->assertEquals($issued->id, $issues[0]->userid);
         $this->assertSame('recp_1', $issues[0]->remoteid);
-        $this->assertSame(issuer::reference($newcm->id, $issued->id), $issues[0]->reference);
+        $this->assertSame(issuer::reference($newcm->id, $issued->id, (int) $issues[0]->id), $issues[0]->reference);
     }
 
     public function test_course_reset(): void {

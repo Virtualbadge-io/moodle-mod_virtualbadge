@@ -37,6 +37,9 @@ class api_client {
     /** Minimum seconds between two forced template reloads. */
     public const REFRESH_MIN_INTERVAL = 30;
 
+    /** Seconds to wait for the lock on the call counter. */
+    public const LOCK_TIMEOUT = 5;
+
     /**
      * Whether URL and API key of an organisation are set.
      *
@@ -325,13 +328,21 @@ class api_client {
         }
         $cache = \cache::make('mod_virtualbadge', 'ratelimit');
         $key = $this->key_hash($org);
-        $now = time();
-        $calls = array_values(array_filter($cache->get($key) ?: [], fn($t) => $t > $now - 3600));
-        if (count($calls) >= $limit) {
-            throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), $calls[0] + 3600 - $now);
+        $lock = \core\lock\lock_config::get_lock_factory('mod_virtualbadge_ratelimit')->get_lock($key, self::LOCK_TIMEOUT);
+        if (!$lock) {
+            throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), self::LOCK_TIMEOUT);
         }
-        $calls[] = $now;
-        $cache->set($key, $calls);
+        try {
+            $now = time();
+            $calls = array_values(array_filter($cache->get($key) ?: [], fn($t) => $t > $now - 3600));
+            if (count($calls) >= $limit) {
+                throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), $calls[0] + 3600 - $now);
+            }
+            $calls[] = $now;
+            $cache->set($key, $calls);
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

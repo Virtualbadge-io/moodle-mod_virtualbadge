@@ -53,6 +53,23 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_heading(
+        'mod_virtualbadge/fieldsheading',
+        get_string('fieldsheading', 'mod_virtualbadge'),
+        ''
+    ));
+    $dateformats = [];
+    foreach (array_keys(config::DATE_FORMATS) as $key) {
+        $dateformats[$key] = get_string('dateformat_' . $key, 'mod_virtualbadge');
+    }
+    $settings->add(new admin_setting_configselect(
+        'mod_virtualbadge/dateformat',
+        get_string('dateformat', 'mod_virtualbadge'),
+        get_string('dateformat_desc', 'mod_virtualbadge'),
+        config::DEFAULT_DATE_FORMAT,
+        $dateformats
+    ));
+
+    $settings->add(new admin_setting_heading(
         'mod_virtualbadge/orgheading',
         get_string('orgheading', 'mod_virtualbadge'),
         get_string('orgheading_desc', 'mod_virtualbadge')

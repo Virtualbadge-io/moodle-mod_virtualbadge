@@ -25,8 +25,8 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'mod_virtualbadge';
-$plugin->version = 2026103003;
+$plugin->version = 2026110200;
 $plugin->requires = 2024100700;
 $plugin->supported = [405, 503];
 $plugin->maturity = MATURITY_STABLE;
-$plugin->release = '1.1.2';
+$plugin->release = '1.1.3';

@@ -1,5 +1,17 @@
 # Changes
 
+## 1.1.3 (2026-11-02)
+
+- "Retry issuing" of a failed certificate first looks for a certificate already created in Virtualbadge, so a lost response no longer leads to a duplicate
+- A reached hourly limit no longer counts as a failed attempt; the certificate is sent as soon as the limit allows it, also after a 429 from Virtualbadge with or without Retry-After
+- Certificates issued after a course reset are new ones, the plugin no longer takes over a certificate from before the reset
+- Restored certificates stay in the organisation they were issued in
+- The call counter of the hourly limit is safe with several cron runners at the same time
+- Issuing to more than 50 participants at once runs in the background
+- New setting for the date format of template fields, default DD.MM.YYYY as before
+- English field names such as "First name", "End date" or "Completion date" are mapped automatically
+- README: Virtualbadge.io issues Open Badges, W3C Verifiable Credentials, and SD-JWT VC and mdoc for the EUDI Wallet
+
 ## 1.1.2 (2026-10-30)
 
 First public release.

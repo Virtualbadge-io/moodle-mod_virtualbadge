@@ -35,6 +35,12 @@ class config {
     /** Default calls per API key and hour. */
     public const DEFAULT_RATE_LIMIT = 200;
 
+    /** Date formats for template fields, null for the format of the site language. */
+    public const DATE_FORMATS = ['dmy' => '%d.%m.%Y', 'ymd' => '%Y-%m-%d', 'mdy' => '%m/%d/%Y', 'lang' => null];
+
+    /** Default date format. */
+    public const DEFAULT_DATE_FORMAT = 'dmy';
+
     /**
      * Configured organisations: the main organisation and any further ones.
      *
@@ -110,6 +116,16 @@ class config {
         $name = $org === self::MAIN_ORG ? 'ratelimit' : 'ratelimit_' . $org;
         $value = trim((string) get_config('mod_virtualbadge', $name));
         return $value === '' ? self::DEFAULT_RATE_LIMIT : max(0, (int) $value);
+    }
+
+    /**
+     * Format of dates in template fields: key of {@see self::DATE_FORMATS}.
+     *
+     * @return string
+     */
+    public static function date_format(): string {
+        $value = (string) get_config('mod_virtualbadge', 'dateformat');
+        return array_key_exists($value, self::DATE_FORMATS) ? $value : self::DEFAULT_DATE_FORMAT;
     }
 
     /**

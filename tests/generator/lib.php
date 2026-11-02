@@ -35,7 +35,7 @@ class mod_virtualbadge_generator extends testing_module_generator {
             'org' => 'main',
             'templateid' => 'cert_test',
             'templatename' => 'Test template',
-            'fieldmap' => json_encode(['kurs' => '{course}', 'note' => '{grade}']),
+            'fieldmap' => json_encode(['course' => '{course}', 'grade' => '{grade}']),
             'triggertype' => 'completion',
             'mingrade' => null,
             'sendemail' => 0,

@@ -35,7 +35,7 @@ final class template_check_test extends \advanced_testcase {
         return (object) [
             'org' => 'main',
             'templateid' => 'cert_1',
-            'fieldmap' => json_encode(['Ort' => ['source' => 'coursefield:ort', 'value' => '']]),
+            'fieldmap' => json_encode(['Location' => ['source' => 'coursefield:location', 'value' => '']]),
         ];
     }
 
@@ -55,13 +55,15 @@ final class template_check_test extends \advanced_testcase {
     }
 
     public function test_matching_template(): void {
-        $this->api_with([['id' => 'cert_1', 'name' => 'ZPP', 'type' => 'certificate', 'fields' => ['Ort']]]);
+        $this->api_with([['id' => 'cert_1', 'name' => 'CTO', 'type' => 'certificate', 'fields' => ['Location']]]);
         $this->assertNull(template_check::problems($this->instance()));
     }
 
     public function test_new_fields(): void {
-        $this->api_with([['id' => 'cert_1', 'name' => 'ZPP', 'type' => 'certificate', 'fields' => ['Ort', 'Dauer', 'Start']]]);
-        $this->assertSame(['missing' => ['Dauer', 'Start']], template_check::problems($this->instance()));
+        $this->api_with([
+            ['id' => 'cert_1', 'name' => 'CTO', 'type' => 'certificate', 'fields' => ['Location', 'Duration', 'Start']],
+        ]);
+        $this->assertSame(['missing' => ['Duration', 'Start']], template_check::problems($this->instance()));
     }
 
     public function test_template_no_longer_active(): void {

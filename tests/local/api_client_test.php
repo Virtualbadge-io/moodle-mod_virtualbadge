@@ -84,13 +84,15 @@ final class api_client_test extends \advanced_testcase {
      * @return array
      */
     protected static function certificate(string $id, array $fields): array {
-        return ['id' => $id, 'name' => 'Zertifikat ' . $id, 'type' => 'certificate', 'status' => 'active',
+        return ['id' => $id, 'name' => 'Certificate ' . $id, 'type' => 'certificate', 'status' => 'active',
             'dynamic_fields' => $fields];
     }
 
     public function test_templates_are_parsed_paged_and_cached(): void {
         $client = $this->client([
-            [200, ['next' => 'page2', 'data' => [self::certificate('cert_1', ['Ort' => '', 'signature' => ['sig-a', 'sig-b']])]]],
+            [200, ['next' => 'page2', 'data' => [
+                self::certificate('cert_1', ['Location' => '', 'signature' => ['sig-a', 'sig-b']]),
+            ]]],
             [200, ['next' => null, 'data' => [self::certificate('cert_2', [])]]],
         ]);
 
@@ -98,9 +100,9 @@ final class api_client_test extends \advanced_testcase {
         $this->assertSame($templates, $client->templates('main'));
 
         $this->assertSame([
-            ['id' => 'cert_1', 'name' => 'Zertifikat cert_1', 'type' => 'certificate', 'fields' => ['Ort'],
+            ['id' => 'cert_1', 'name' => 'Certificate cert_1', 'type' => 'certificate', 'fields' => ['Location'],
                 'slots' => ['signature' => 'sig-a']],
-            ['id' => 'cert_2', 'name' => 'Zertifikat cert_2', 'type' => 'certificate', 'fields' => [], 'slots' => []],
+            ['id' => 'cert_2', 'name' => 'Certificate cert_2', 'type' => 'certificate', 'fields' => [], 'slots' => []],
         ], $templates);
         $this->assertCount(2, $client->requests);
         $this->assertSame('https://api.example.org/v2/public/certificate/?status=active&page=1', $client->requests[0][1]);
@@ -109,11 +111,11 @@ final class api_client_test extends \advanced_testcase {
 
     public function test_refresh_waits_thirty_seconds(): void {
         $client = $this->client([
-            [200, ['data' => [self::certificate('cert_1', ['Ort' => ''])]]],
-            [200, ['data' => [self::certificate('cert_1', ['Ort' => '', 'Dauer' => ''])]]],
+            [200, ['data' => [self::certificate('cert_1', ['Location' => ''])]]],
+            [200, ['data' => [self::certificate('cert_1', ['Location' => '', 'Duration' => ''])]]],
         ]);
         $client->templates('main');
-        $this->assertSame(['Ort'], $client->templates('main', true)[0]['fields']);
+        $this->assertSame(['Location'], $client->templates('main', true)[0]['fields']);
         $this->assertCount(1, $client->requests);
 
         $cache = \cache::make('mod_virtualbadge', 'templates');
@@ -122,13 +124,13 @@ final class api_client_test extends \advanced_testcase {
         $entry['time'] -= api_client::REFRESH_MIN_INTERVAL + 1;
         $cache->set($key, $entry);
 
-        $this->assertSame(['Ort', 'Dauer'], $client->templates('main', true)[0]['fields']);
+        $this->assertSame(['Location', 'Duration'], $client->templates('main', true)[0]['fields']);
         $this->assertCount(2, $client->requests);
     }
 
     public function test_issue_and_result_mapping(): void {
         $recipient = ['email' => 'a@example.org', 'full_name' => 'A B', 'issue_date' => '2026-10-24',
-            'dynamic_fields' => ['Ort' => 'Hamburg'], 'metadata' => ['moodle_ref' => 'x:1:2']];
+            'dynamic_fields' => ['Location' => 'Hamburg'], 'metadata' => ['moodle_ref' => 'x:1:2']];
         $client = $this->client([[201, ['count' => 1, 'data' => [[
             'id' => 'recp_1',
             'generation_state' => 'pending',

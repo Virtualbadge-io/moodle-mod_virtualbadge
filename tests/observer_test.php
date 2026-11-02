@@ -38,11 +38,13 @@ require_once($CFG->libdir . '/gradelib.php');
  * @covers     \mod_virtualbadge\local\issuer
  * @covers     \mod_virtualbadge\local\conditions
  * @covers     \mod_virtualbadge\event\issue_skipped
+ * @covers     \mod_virtualbadge\task\queue_issues
  */
 #[\PHPUnit\Framework\Attributes\CoversClass(observer::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(issuer::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(conditions::class)]
 #[\PHPUnit\Framework\Attributes\CoversClass(\mod_virtualbadge\event\issue_skipped::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\mod_virtualbadge\task\queue_issues::class)]
 final class observer_test extends \advanced_testcase {
     /**
      * Number of queued issue tasks.
@@ -81,7 +83,7 @@ final class observer_test extends \advanced_testcase {
         $this->assertEquals($instance->id, $issue->virtualbadgeid);
         $this->assertEquals($student->id, $issue->userid);
         $this->assertSame(issuer::STATUS_QUEUED, $issue->status);
-        $this->assertSame(issuer::reference($instance->cmid, $student->id), $issue->reference);
+        $this->assertSame(issuer::reference($instance->cmid, $student->id, (int) $issue->id), $issue->reference);
         $this->assertSame(1, $this->queued_tasks());
     }
 
@@ -186,6 +188,32 @@ final class observer_test extends \advanced_testcase {
         $this->assertSame(1, issuer::issue_retroactively($instance, $cm));
         $this->assertSame(0, issuer::issue_retroactively($instance, $cm));
         $this->assertSame('retroactive', $DB->get_field('virtualbadge_issues', 'source', ['userid' => $done->id]));
+    }
+
+    public function test_queue_issues_in_background(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $gen = $this->getDataGenerator();
+        $course = $gen->create_course(['enablecompletion' => 1]);
+        $done = $gen->create_and_enrol($course, 'student');
+        $selected = $gen->create_and_enrol($course, 'student');
+        $this->complete_course($course, $done->id);
+        $instance = $gen->create_module('virtualbadge', ['course' => $course->id]);
+        $manual = $gen->create_module('virtualbadge', ['course' => $course->id, 'triggertype' => 'manual']);
+
+        \mod_virtualbadge\task\queue_issues::schedule($instance->id);
+        \mod_virtualbadge\task\queue_issues::schedule($instance->id);
+        \mod_virtualbadge\task\queue_issues::schedule($manual->id, [$selected->id]);
+        $tasks = \core\task\manager::get_adhoc_tasks(\mod_virtualbadge\task\queue_issues::class);
+        $this->assertCount(2, $tasks);
+        $this->expectOutputString("Queued 1 certificates.\nQueued 1 certificates.\n");
+        foreach ($tasks as $task) {
+            $task->execute();
+        }
+
+        $this->assertTrue($DB->record_exists('virtualbadge_issues', ['virtualbadgeid' => $instance->id, 'userid' => $done->id]));
+        $this->assertSame(1, $DB->count_records('virtualbadge_issues', ['virtualbadgeid' => $instance->id]));
+        $this->assertTrue($DB->record_exists('virtualbadge_issues', ['virtualbadgeid' => $manual->id, 'userid' => $selected->id]));
     }
 
     public function test_release_after_completion(): void {

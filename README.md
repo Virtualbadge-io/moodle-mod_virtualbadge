@@ -2,6 +2,8 @@
 
 Moodle activity that issues certificates and badges in [Virtualbadge.io](https://www.virtualbadge.io) and shows the link to the certificate inside Moodle.
 
+Virtualbadge.io issues certificates and badges as Open Badges and W3C Verifiable Credentials, and for the EU Digital Identity Wallet (EUDI Wallet) as SD-JWT VC and mdoc. Learners can add them to the EUDI Wallet or save them to the wallet app on their smartphone.
+
 ## Features
 
 - Issue on course completion, on course completion after release by a trainer, when the course grade reaches a minimum, or on manual release
@@ -32,6 +34,7 @@ Site administration > Plugins > Activity modules > Virtualbadge:
 
 - API key of your Virtualbadge organisation
 - Calls per hour: the limit agreed with Virtualbadge (default 200)
+- Date format for template fields (default DD.MM.YYYY)
 - Optional: further organisations with their own API key, and a mapping of course categories to organisations
 
 ## Privacy

@@ -47,6 +47,12 @@ $canviewstatus = $canmanage || has_capability('mod/virtualbadge:viewstatus', $co
 if ($action !== '' && $canmanage) {
     require_sesskey();
     if ($action === 'retroactive') {
+        $pending = count(\mod_virtualbadge\local\conditions::pending_users($instance, $cm));
+        if ($pending > issuer::QUEUE_DIRECT_MAX) {
+            \mod_virtualbadge\task\queue_issues::schedule($instance->id);
+            $message = get_string('queuedinbackground', 'mod_virtualbadge', $pending);
+            redirect($url, $message, null, \core\output\notification::NOTIFY_SUCCESS);
+        }
         $count = issuer::issue_retroactively($instance, $cm);
         redirect($url, get_string('retroactive_done', 'mod_virtualbadge', $count), null, \core\output\notification::NOTIFY_SUCCESS);
     }
@@ -76,7 +82,13 @@ if ($action !== '' && $canmanage) {
         );
     }
     if ($action === 'releaseselected') {
-        $count = issuer::release_selected($instance, $cm, optional_param_array('userids', [], PARAM_INT));
+        $userids = array_values(array_unique(optional_param_array('userids', [], PARAM_INT)));
+        if (count($userids) > issuer::QUEUE_DIRECT_MAX) {
+            \mod_virtualbadge\task\queue_issues::schedule($instance->id, $userids);
+            $message = get_string('queuedinbackground', 'mod_virtualbadge', count($userids));
+            redirect($url, $message, null, \core\output\notification::NOTIFY_SUCCESS);
+        }
+        $count = issuer::release_selected($instance, $cm, $userids);
         redirect(
             $url,
             get_string('releaseselected_done', 'mod_virtualbadge', $count),

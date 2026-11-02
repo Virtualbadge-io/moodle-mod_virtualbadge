@@ -39,8 +39,8 @@ final class fieldsources_test extends \advanced_testcase {
      */
     protected function setup_participant(array $userfields = []): array {
         $gen = $this->getDataGenerator();
-        $course = $gen->create_course(['fullname' => 'Grundlagen QM', 'shortname' => 'QM1']);
-        $user = $gen->create_and_enrol($course, 'student', ['firstname' => 'Maria', 'lastname' => 'Beispiel'] + $userfields);
+        $course = $gen->create_course(['fullname' => 'Quality Management Basics', 'shortname' => 'QM1']);
+        $user = $gen->create_and_enrol($course, 'student', ['firstname' => 'Maria', 'lastname' => 'Example'] + $userfields);
         $issue = (object) ['completedat' => make_timestamp(2026, 10, 24, 12)];
         return [$course, $user, $issue];
     }
@@ -56,59 +56,71 @@ final class fieldsources_test extends \advanced_testcase {
     public function test_suggest(): void {
         $this->resetAfterTest();
         $this->getDataGenerator()->create_custom_profile_field([
-            'datatype' => 'datetime', 'shortname' => 'geburtsdatum', 'name' => 'Geburtsdatum',
+            'datatype' => 'datetime', 'shortname' => 'dateofbirth', 'name' => 'Date of birth',
         ]);
-        $this->assertSame('profile:geburtsdatum', fieldsources::suggest('Geburtsdatum'));
+        $this->assertSame('profile:dateofbirth', fieldsources::suggest('Date of birth'));
+        $this->assertSame('user:firstname', fieldsources::suggest('First name'));
+        $this->assertSame('user:lastname', fieldsources::suggest('Last name'));
+        $this->assertSame('user:fullname', fieldsources::suggest('Full name'));
+        $this->assertSame('course:fullname', fieldsources::suggest('Course'));
+        $this->assertSame('course:enddate', fieldsources::suggest('End date'));
+        $this->assertSame('issue:completiondate', fieldsources::suggest('Completion date'));
+        $this->assertSame('text', fieldsources::suggest('Occupation'));
+        $this->assertTrue(fieldsources::is_valid('profile:dateofbirth'));
+        $this->assertFalse(fieldsources::is_valid('profile:unknown'));
+    }
+
+    public function test_suggest_german_field_names(): void {
         $this->assertSame('user:firstname', fieldsources::suggest('Vorname'));
         $this->assertSame('course:fullname', fieldsources::suggest('Kurs'));
-        $this->assertSame('text', fieldsources::suggest('Beruf'));
-        $this->assertTrue(fieldsources::is_valid('profile:geburtsdatum'));
-        $this->assertFalse(fieldsources::is_valid('profile:unknown'));
+        $this->assertSame('course:idnumber', fieldsources::suggest('Kurs ID'));
+        $this->assertSame('course:enddate', fieldsources::suggest('Ende'));
+        $this->assertSame('issue:completiondate', fieldsources::suggest('Abschlussdatum'));
     }
 
     public function test_resolve_mixed_sources(): void {
         $this->resetAfterTest();
         $gen = $this->getDataGenerator();
-        $gen->create_custom_profile_field(['datatype' => 'datetime', 'shortname' => 'geburtsdatum', 'name' => 'Geburtsdatum']);
-        $gen->create_custom_profile_field(['datatype' => 'text', 'shortname' => 'personalnr', 'name' => 'Personalnummer']);
-        [$course, $user, $issue] = $this->setup_participant(['institution' => 'Musterwerk GmbH']);
+        $gen->create_custom_profile_field(['datatype' => 'datetime', 'shortname' => 'dateofbirth', 'name' => 'Date of birth']);
+        $gen->create_custom_profile_field(['datatype' => 'text', 'shortname' => 'personalnr', 'name' => 'Personnel number']);
+        [$course, $user, $issue] = $this->setup_participant(['institution' => 'Example Works Ltd']);
         profile_save_custom_fields($user->id, [
-            'geburtsdatum' => make_timestamp(1990, 3, 12, 12),
+            'dateofbirth' => make_timestamp(1990, 3, 12, 12),
             'personalnr' => 'P-4711',
         ]);
 
         $values = fieldsources::resolve([
-            'Beruf' => ['source' => 'text', 'value' => 'Fachkraft ({course})'],
-            'Geburtsdatum' => ['source' => 'profile:geburtsdatum', 'value' => ''],
-            'Firma' => ['source' => 'user:institution', 'value' => ''],
-            'Datum' => ['source' => 'issue:completiondate', 'value' => ''],
-            'Kurs' => ['source' => 'course:shortname', 'value' => ''],
-            'Hinweis' => 'Nr. {profile:personalnr}',
+            'Occupation' => ['source' => 'text', 'value' => 'Specialist ({course})'],
+            'Date of birth' => ['source' => 'profile:dateofbirth', 'value' => ''],
+            'Company' => ['source' => 'user:institution', 'value' => ''],
+            'Date' => ['source' => 'issue:completiondate', 'value' => ''],
+            'Course' => ['source' => 'course:shortname', 'value' => ''],
+            'Note' => 'No. {profile:personalnr}',
         ], $course, $user, $issue);
 
         $this->assertSame([
-            'Beruf' => 'Fachkraft (Grundlagen QM)',
-            'Geburtsdatum' => '12.03.1990',
-            'Firma' => 'Musterwerk GmbH',
-            'Datum' => '24.10.2026',
-            'Kurs' => 'QM1',
-            'Hinweis' => 'Nr. P-4711',
+            'Occupation' => 'Specialist (Quality Management Basics)',
+            'Date of birth' => '12.03.1990',
+            'Company' => 'Example Works Ltd',
+            'Date' => '24.10.2026',
+            'Course' => 'QM1',
+            'Note' => 'No. P-4711',
         ], $values);
     }
 
     public function test_empty_participant_value_is_reported(): void {
         $this->resetAfterTest();
         $this->getDataGenerator()->create_custom_profile_field([
-            'datatype' => 'datetime', 'shortname' => 'geburtsdatum', 'name' => 'Geburtsdatum',
+            'datatype' => 'datetime', 'shortname' => 'dateofbirth', 'name' => 'Date of birth',
         ]);
         [$course, $user, $issue] = $this->setup_participant();
 
         try {
-            fieldsources::resolve(['Geburtsdatum' => ['source' => 'profile:geburtsdatum', 'value' => '']], $course, $user, $issue);
+            fieldsources::resolve(['Date of birth' => ['source' => 'profile:dateofbirth', 'value' => '']], $course, $user, $issue);
             $this->fail('Exception expected');
         } catch (field_value_missing $e) {
-            $this->assertSame('Geburtsdatum', $e->field);
-            $this->assertStringContainsString('Geburtsdatum', $e->getMessage());
+            $this->assertSame('Date of birth', $e->field);
+            $this->assertStringContainsString('Date of birth', $e->getMessage());
         }
     }
 
@@ -116,44 +128,48 @@ final class fieldsources_test extends \advanced_testcase {
         $this->resetAfterTest();
         $cfgen = $this->getDataGenerator()->get_plugin_generator('core_customfield');
         $category = $cfgen->create_category(['component' => 'core_course', 'area' => 'course', 'itemid' => 0]);
-        $cfgen->create_field(['categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'ort', 'name' => 'Ort']);
-        $cfgen->create_field(['categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'dauer', 'name' => 'Dauer']);
+        $cfgen->create_field([
+            'categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'location', 'name' => 'Location',
+        ]);
+        $cfgen->create_field([
+            'categoryid' => $category->get('id'), 'type' => 'text', 'shortname' => 'duration', 'name' => 'Duration',
+        ]);
         $course = $this->getDataGenerator()->create_course([
             'idnumber' => ' ZPP-2026-11 ',
             'startdate' => make_timestamp(2026, 11, 3, 9),
             'enddate' => make_timestamp(2026, 11, 5, 17),
-            'customfield_ort' => 'Hamburg',
+            'customfield_location' => 'Hamburg',
         ]);
         $user = $this->getDataGenerator()->create_and_enrol($course, 'student');
         $issue = (object) ['completedat' => time()];
 
-        $this->assertSame('coursefield:ort', fieldsources::suggest('Ort'));
-        $this->assertSame('course:idnumber', fieldsources::suggest('Kurs ID'));
+        $this->assertSame('coursefield:location', fieldsources::suggest('Location'));
+        $this->assertSame('course:idnumber', fieldsources::suggest('Course ID'));
         $this->assertSame('course:startdate', fieldsources::suggest('Start'));
-        $this->assertSame('course:enddate', fieldsources::suggest('Ende'));
-        $this->assertTrue(fieldsources::is_valid('coursefield:dauer'));
+        $this->assertSame('course:enddate', fieldsources::suggest('End'));
+        $this->assertTrue(fieldsources::is_valid('coursefield:duration'));
 
         $values = fieldsources::resolve([
-            'Kurs ID' => ['source' => 'course:idnumber', 'value' => ''],
+            'Course ID' => ['source' => 'course:idnumber', 'value' => ''],
             'Start' => ['source' => 'course:startdate', 'value' => ''],
-            'Ende' => ['source' => 'course:enddate', 'value' => ''],
-            'Ort' => ['source' => 'coursefield:ort', 'value' => ''],
-            'Zeitraum' => ['source' => 'text', 'value' => '{coursestartdate} bis {courseenddate} in {coursefield:ort}'],
+            'End' => ['source' => 'course:enddate', 'value' => ''],
+            'Location' => ['source' => 'coursefield:location', 'value' => ''],
+            'Period' => ['source' => 'text', 'value' => '{coursestartdate} to {courseenddate} in {coursefield:location}'],
         ], $course, $user, $issue);
         $this->assertSame([
-            'Kurs ID' => 'ZPP-2026-11',
+            'Course ID' => 'ZPP-2026-11',
             'Start' => '03.11.2026',
-            'Ende' => '05.11.2026',
-            'Ort' => 'Hamburg',
-            'Zeitraum' => '03.11.2026 bis 05.11.2026 in Hamburg',
+            'End' => '05.11.2026',
+            'Location' => 'Hamburg',
+            'Period' => '03.11.2026 to 05.11.2026 in Hamburg',
         ], $values);
 
         try {
-            fieldsources::resolve(['Dauer' => ['source' => 'coursefield:dauer', 'value' => '']], $course, $user, $issue);
+            fieldsources::resolve(['Duration' => ['source' => 'coursefield:duration', 'value' => '']], $course, $user, $issue);
             $this->fail('Exception expected');
         } catch (field_value_missing $e) {
             $this->assertSame('fieldvaluemissing_course', $e->errorcode);
-            $this->assertSame('Dauer', $e->field);
+            $this->assertSame('Duration', $e->field);
         }
     }
 
@@ -169,10 +185,31 @@ final class fieldsources_test extends \advanced_testcase {
 
         $values = fieldsources::resolve([
             'Start' => ['source' => 'course:startdate', 'value' => ''],
-            'Ende' => ['source' => 'course:enddate', 'value' => ''],
-            'Datum' => ['source' => 'issue:completiondate', 'value' => ''],
+            'End' => ['source' => 'course:enddate', 'value' => ''],
+            'Date' => ['source' => 'issue:completiondate', 'value' => ''],
         ], $course, $user, $issue);
-        $this->assertSame(['Start' => '31.12.2026', 'Ende' => '31.12.2026', 'Datum' => '31.12.2026'], $values);
+        $this->assertSame(['Start' => '31.12.2026', 'End' => '31.12.2026', 'Date' => '31.12.2026'], $values);
+    }
+
+    public function test_date_format_setting(): void {
+        $this->resetAfterTest();
+        $this->setTimezone('Europe/Berlin');
+        $course = $this->getDataGenerator()->create_course();
+        $user = $this->getDataGenerator()->create_and_enrol($course, 'student');
+        $issue = (object) ['completedat' => make_timestamp(2026, 3, 5, 12)];
+        $map = ['Date' => ['source' => 'issue:completiondate', 'value' => '']];
+
+        $expected = [
+            'dmy' => '05.03.2026',
+            'ymd' => '2026-03-05',
+            'mdy' => '03/05/2026',
+            'lang' => '5 March 2026',
+            'other' => '05.03.2026',
+        ];
+        foreach ($expected as $format => $date) {
+            set_config('dateformat', $format, 'mod_virtualbadge');
+            $this->assertSame(['Date' => $date], fieldsources::resolve($map, $course, $user, $issue), $format);
+        }
     }
 
     public function test_course_points(): void {

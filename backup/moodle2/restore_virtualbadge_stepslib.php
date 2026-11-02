@@ -73,6 +73,7 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
 
     /**
      * Restore one issued certificate. Ids and links are checked as if they came from the API.
+     * The certificate stays in the organisation it was issued in, even if the activity moves to another one.
      *
      * @param array $data
      */
@@ -92,7 +93,9 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
             $data->$field = api_client::https_url($data->$field ?? null);
         }
         $data->virtualbadgeid = $this->get_new_parentid('virtualbadge');
-        $data->org = $DB->get_field('virtualbadge', 'org', ['id' => $data->virtualbadgeid]);
+        if (empty($data->org) || !preg_match('/^[A-Za-z0-9_-]+$/', $data->org)) {
+            $data->org = $DB->get_field('virtualbadge', 'org', ['id' => $data->virtualbadgeid]);
+        }
         $data->userid = $this->get_mappingid('user', $data->userid);
         if (!$data->userid) {
             return;
@@ -102,6 +105,8 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
             return;
         }
         $newid = $DB->insert_record('virtualbadge_issues', $data);
+        $reference = issuer::reference($this->task->get_moduleid(), $data->userid, $newid);
+        $DB->set_field('virtualbadge_issues', 'reference', $reference, ['id' => $newid]);
         $this->set_mapping('virtualbadge_issue', $oldid, $newid);
         if ($data->status === issuer::STATUS_PENDING) {
             $this->pending[] = $newid;

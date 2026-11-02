@@ -52,10 +52,13 @@ class fieldsources {
     protected const SUGGESTIONS = [
         'vorname' => 'user:firstname',
         'firstname' => 'user:firstname',
+        'first name' => 'user:firstname',
         'nachname' => 'user:lastname',
         'lastname' => 'user:lastname',
+        'last name' => 'user:lastname',
         'name' => 'user:fullname',
         'fullname' => 'user:fullname',
+        'full name' => 'user:fullname',
         'e-mail' => 'user:email',
         'email' => 'user:email',
         'firma' => 'user:institution',
@@ -73,9 +76,12 @@ class fieldsources {
         'beginn' => 'course:startdate',
         'kursbeginn' => 'course:startdate',
         'startdatum' => 'course:startdate',
+        'start date' => 'course:startdate',
         'ende' => 'course:enddate',
         'kursende' => 'course:enddate',
         'enddatum' => 'course:enddate',
+        'end' => 'course:enddate',
+        'end date' => 'course:enddate',
         'kurs' => 'course:fullname',
         'course' => 'course:fullname',
         'note' => 'issue:grade',
@@ -90,6 +96,7 @@ class fieldsources {
         'datum' => 'issue:completiondate',
         'abschlussdatum' => 'issue:completiondate',
         'date' => 'issue:completiondate',
+        'completion date' => 'issue:completiondate',
     ];
 
     /**
@@ -432,12 +439,25 @@ class fieldsources {
     }
 
     /**
-     * Date as DD.MM.YYYY in the site timezone, empty for 0.
+     * Date in the configured format and the site timezone, empty for 0.
      *
      * @param int $timestamp
      * @return string
      */
     protected static function date(int $timestamp): string {
-        return $timestamp ? userdate($timestamp, '%d.%m.%Y', core_date::get_server_timezone(), false) : '';
+        global $CFG;
+        if (!$timestamp) {
+            return '';
+        }
+        $format = config::DATE_FORMATS[config::date_format()];
+        if ($format !== null) {
+            return userdate($timestamp, $format, core_date::get_server_timezone(), false);
+        }
+        $previous = force_current_language($CFG->lang);
+        try {
+            return userdate($timestamp, get_string('strftimedate', 'langconfig'), core_date::get_server_timezone());
+        } finally {
+            force_current_language($previous);
+        }
     }
 }

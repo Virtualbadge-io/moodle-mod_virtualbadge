@@ -64,6 +64,9 @@ class issuer {
     /** Checks per run of the verify task if an organisation has no hourly limit. */
     public const VERIFY_UNLIMITED = 100;
 
+    /** Participants a trainer action queues directly, more are queued by a background task. */
+    public const QUEUE_DIRECT_MAX = 50;
+
     /**
      * Activities in a course with a given trigger.
      *
@@ -129,6 +132,8 @@ class issuer {
         } catch (\dml_write_exception $e) {
             return null;
         }
+        $issue->reference = self::reference($cm->id, $userid, $issue->id);
+        $DB->set_field('virtualbadge_issues', 'reference', $issue->reference, ['id' => $issue->id]);
         self::schedule_issue($issue->id);
         return $issue;
     }
@@ -152,11 +157,16 @@ class issuer {
      * Queue the issue task.
      *
      * @param int $issueid
+     * @param int $delay seconds, for a run postponed by the running task itself
      */
-    public static function schedule_issue(int $issueid): void {
+    public static function schedule_issue(int $issueid, int $delay = 0): void {
         $task = new \mod_virtualbadge\task\issue_certificate();
         $task->set_custom_data(['issueid' => $issueid]);
-        \core\task\manager::queue_adhoc_task($task, true);
+        if ($delay > 0) {
+            $task->set_next_run_time(time() + $delay);
+        }
+        // The running task is still in the queue, a postponed run must not be dropped as a duplicate of it.
+        \core\task\manager::queue_adhoc_task($task, $delay === 0);
     }
 
     /**
@@ -164,26 +174,30 @@ class issuer {
      *
      * @param int $issueid
      * @param int $check number of the check, starting at 0
+     * @param int|null $delay seconds, for a check postponed by the running task itself
      */
-    public static function schedule_status_check(int $issueid, int $check): void {
+    public static function schedule_status_check(int $issueid, int $check, ?int $delay = null): void {
         if ($check >= count(self::STATUS_DELAYS)) {
             return;
         }
         $task = new \mod_virtualbadge\task\check_status();
         $task->set_custom_data(['issueid' => $issueid, 'check' => $check]);
-        $task->set_next_run_time(time() + self::STATUS_DELAYS[$check]);
-        \core\task\manager::queue_adhoc_task($task, true);
+        $task->set_next_run_time(time() + ($delay ?? self::STATUS_DELAYS[$check]));
+        \core\task\manager::queue_adhoc_task($task, $delay === null);
     }
 
     /**
-     * Reference stored with the recipient in Virtualbadge, unique per site, activity and user.
+     * Reference stored with the recipient in Virtualbadge, unique per site, activity, user and issue record.
+     * The issue id keeps recipients created before a course reset apart from new ones.
      *
      * @param int $cmid
      * @param int $userid
+     * @param int|null $issueid null while the record is being inserted
      * @return string
      */
-    public static function reference(int $cmid, int $userid): string {
-        return substr(sha1(get_site_identifier()), 0, 12) . ':' . $cmid . ':' . $userid;
+    public static function reference(int $cmid, int $userid, ?int $issueid = null): string {
+        $reference = substr(sha1(get_site_identifier()), 0, 12) . ':' . $cmid . ':' . $userid;
+        return $issueid ? $reference . ':' . $issueid : $reference;
     }
 
     /**
@@ -386,6 +400,7 @@ class issuer {
 
     /**
      * Record an API error. Temporary errors are thrown again so that the task is retried.
+     * A reached limit is no attempt: the issue is sent again when the limit allows it.
      *
      * @param stdClass $issue
      * @param api_exception $e
@@ -393,6 +408,14 @@ class issuer {
      */
     protected static function handle_error(stdClass $issue, api_exception $e): void {
         global $DB;
+        if ($e->status === 429) {
+            $issue->status = self::STATUS_RETRYING;
+            $issue->lasterror = $e->getMessage();
+            $issue->timemodified = time();
+            $DB->update_record('virtualbadge_issues', $issue);
+            self::schedule_issue($issue->id, self::wait_seconds($e));
+            return;
+        }
         $issue->attempts++;
         if ($e->is_temporary() && $issue->attempts < self::MAX_ATTEMPTS) {
             $issue->status = self::STATUS_RETRYING;
@@ -402,6 +425,16 @@ class issuer {
             throw $e;
         }
         self::fail($issue, $e->getMessage());
+    }
+
+    /**
+     * Seconds to wait after a reached limit.
+     *
+     * @param api_exception $e
+     * @return int
+     */
+    protected static function wait_seconds(api_exception $e): int {
+        return max(1, $e->retryafter ?? 60);
     }
 
     /**
@@ -435,7 +468,7 @@ class issuer {
         $instance = $DB->get_record('virtualbadge', ['id' => $issue->virtualbadgeid], '*', MUST_EXIST);
         $cm = get_fast_modinfo($instance->course)->get_instances_of('virtualbadge')[$instance->id];
         try {
-            $result = \core\di::get(api_client::class)->status($instance->org, $issue->remoteid);
+            $result = \core\di::get(api_client::class)->status($issue->org, $issue->remoteid);
         } catch (api_exception $e) {
             if ($e->status === 404) {
                 self::mark_deleted($issue);
@@ -444,7 +477,11 @@ class issuer {
             $issue->lasterror = $e->getMessage();
             $issue->timemodified = time();
             $DB->update_record('virtualbadge_issues', $issue);
-            self::schedule_status_check($issue->id, $check + 1);
+            if ($e->status === 429) {
+                self::schedule_status_check($issue->id, $check, self::wait_seconds($e));
+            } else {
+                self::schedule_status_check($issue->id, $check + 1);
+            }
             return;
         }
         self::apply_result($issue, $result, $instance, $cm);
@@ -740,8 +777,10 @@ class issuer {
             }
             $issue->emailsent = 0;
         }
+        // A failed issue may have been created in Virtualbadge by a request whose answer was lost.
+        // One counted attempt makes the next run look it up before issuing.
+        $issue->attempts = $issue->status === self::STATUS_FAILED ? 1 : 0;
         $issue->status = self::STATUS_QUEUED;
-        $issue->attempts = 0;
         $issue->lasterror = null;
         $issue->timemodified = time();
         $DB->update_record('virtualbadge_issues', $issue);

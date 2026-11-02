@@ -60,7 +60,7 @@ final class issue_certificate_test extends \advanced_testcase {
         parent::setUp();
         $this->resetAfterTest();
         $gen = $this->getDataGenerator();
-        $this->course = $gen->create_course(['enablecompletion' => 1, 'fullname' => 'Grundlagen QM']);
+        $this->course = $gen->create_course(['enablecompletion' => 1, 'fullname' => 'Quality Management Basics']);
         $this->student = $gen->create_and_enrol($this->course, 'student', [
             'firstname' => 'Sophie',
             'lastname' => 'Hartmann',
@@ -82,7 +82,7 @@ final class issue_certificate_test extends \advanced_testcase {
      * @param array|null $fields template fields, null for no active template
      * @return \PHPUnit\Framework\MockObject\MockObject&api_client
      */
-    protected function mock_api(?array $fields = ['kurs', 'note']) {
+    protected function mock_api(?array $fields = ['course', 'grade']) {
         $mock = $this->createMock(api_client::class);
         $templates = $fields === null ? [] : [[
             'id' => 'cert_test',
@@ -123,7 +123,7 @@ final class issue_certificate_test extends \advanced_testcase {
                 return $recipient['email'] === 'sophie@example.org'
                     && $recipient['full_name'] === 'Sophie Hartmann'
                     && $recipient['issue_date'] === '2026-10-24'
-                    && $fields['kurs'] === 'Grundlagen QM'
+                    && $fields['course'] === 'Quality Management Basics'
                     && $fields['signature'] === 'signature-ceo'
                     && $recipient['metadata'] === ['moodle_ref' => $this->issue->reference];
             }), false)
@@ -240,11 +240,95 @@ final class issue_certificate_test extends \advanced_testcase {
         $DB->set_field('virtualbadge_issues', 'attempts', issuer::MAX_ATTEMPTS - 1, ['id' => $this->issue->id]);
         $api = $this->mock_api();
         $api->method('find')->willReturn(null);
-        $api->method('issue')->willThrowException(new api_exception(429, 'rate limit'));
+        $api->method('issue')->willThrowException(new api_exception(502, 'upstream error'));
 
         $this->run_issue_task();
 
         $this->assertSame(issuer::STATUS_FAILED, $this->issue()->status);
+    }
+
+    public function test_retry_after_lost_response_finds_created_certificate(): void {
+        global $DB;
+        $DB->set_field('virtualbadge_issues', 'attempts', issuer::MAX_ATTEMPTS - 1, ['id' => $this->issue->id]);
+        $api = $this->mock_api();
+        $api->expects($this->once())->method('issue')->willThrowException(new api_exception(0, 'timeout'));
+        $api->expects($this->exactly(2))->method('find')->with('main', 'cert_test', $this->issue->reference)
+            ->willReturnOnConsecutiveCalls(null, ['id' => 'recp_1', 'status' => 'issued']);
+
+        $this->run_issue_task();
+        $this->assertSame(issuer::STATUS_FAILED, $this->issue()->status);
+
+        $this->assertTrue(issuer::retry($this->issue()));
+        $this->run_issue_task();
+
+        $this->assertSame(issuer::STATUS_ISSUED, $this->issue()->status);
+        $this->assertSame('recp_1', $this->issue()->remoteid);
+    }
+
+    public function test_limit_postpones_without_using_an_attempt(): void {
+        $api = $this->mock_api();
+        $api->expects($this->once())->method('issue')
+            ->willThrowException(new api_exception(429, 'limit', 1800));
+
+        $this->run_issue_task();
+
+        $issue = $this->issue();
+        $this->assertSame(issuer::STATUS_RETRYING, $issue->status);
+        $this->assertEquals(0, $issue->attempts);
+        $this->assertStringContainsString('limit', $issue->lasterror);
+        $times = array_map(fn($t) => $t->get_next_run_time(), \core\task\manager::get_adhoc_tasks(issue_certificate::class));
+        $this->assertGreaterThanOrEqual(time() + 1790, max($times));
+        $this->assertLessThanOrEqual(time() + 1800, max($times));
+    }
+
+    public function test_status_check_at_limit_keeps_its_number(): void {
+        global $DB;
+        $DB->update_record('virtualbadge_issues', (object) [
+            'id' => $this->issue->id,
+            'status' => issuer::STATUS_PENDING,
+            'remoteid' => 'recp_1',
+        ]);
+        $api = $this->mock_api();
+        $api->method('status')->willThrowException(new api_exception(429, 'limit', 600));
+
+        issuer::check_status($this->issue->id, 3);
+
+        $tasks = \core\task\manager::get_adhoc_tasks(check_status::class);
+        $this->assertCount(1, $tasks);
+        $task = reset($tasks);
+        $this->assertSame(3, $task->get_custom_data()->check);
+        $this->assertGreaterThanOrEqual(time() + 590, $task->get_next_run_time());
+    }
+
+    public function test_reference_contains_the_issue(): void {
+        global $DB;
+        $expected = issuer::reference($this->instance->cmid, $this->student->id, $this->issue->id);
+        $this->assertSame($expected, $this->issue->reference);
+        $this->assertSame($expected, $DB->get_field('virtualbadge_issues', 'reference', ['id' => $this->issue->id]));
+        $this->assertStringEndsWith(':' . $this->student->id . ':' . $this->issue->id, $expected);
+    }
+
+    public function test_new_issue_after_course_reset_ignores_old_certificate(): void {
+        $api = $this->mock_api();
+        $old = $this->issue->reference;
+        virtualbadge_reset_userdata((object) ['courseid' => $this->course->id, 'reset_virtualbadge_issues' => 1]);
+        $cm = get_fast_modinfo($this->course)->get_cm($this->instance->cmid);
+        $this->issue = issuer::queue($this->instance, $cm, $this->student->id, 'manual', time());
+
+        $this->assertNotSame($old, $this->issue->reference);
+        $api->method('issue')->willThrowException(new api_exception(502, 'upstream error'));
+        $api->expects($this->once())->method('find')->with('main', 'cert_test', $this->issue->reference)->willReturn(null);
+        try {
+            $this->run_issue_task();
+        } catch (api_exception $e) {
+            $this->assertSame(502, $e->status);
+        }
+        try {
+            $this->run_issue_task();
+        } catch (api_exception $e) {
+            $this->assertSame(502, $e->status);
+        }
+        $this->assertSame(issuer::STATUS_RETRYING, $this->issue()->status);
     }
 
     public function test_resend_after_failure(): void {
@@ -278,14 +362,14 @@ final class issue_certificate_test extends \advanced_testcase {
     }
 
     public function test_unmapped_template_field_fails_without_call(): void {
-        $api = $this->mock_api(['kurs', 'note', 'Ort']);
+        $api = $this->mock_api(['course', 'grade', 'Location']);
         $api->expects($this->never())->method('issue');
 
         $this->run_issue_task();
 
         $issue = $this->issue();
         $this->assertSame(issuer::STATUS_FAILED, $issue->status);
-        $this->assertStringContainsString('Ort', $issue->lasterror);
+        $this->assertStringContainsString('Location', $issue->lasterror);
     }
 
     public function test_missing_participant_value_fails_without_call(): void {

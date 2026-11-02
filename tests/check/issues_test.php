@@ -40,8 +40,8 @@ final class issues_test extends \advanced_testcase {
         $this->resetAfterTest();
         set_config('apikey', 'key-main', 'mod_virtualbadge');
         $gen = $this->getDataGenerator();
-        $this->course = $gen->create_course(['fullname' => 'Grundlagen QM']);
-        $this->instance = $gen->create_module('virtualbadge', ['course' => $this->course->id, 'name' => 'Zertifikat QM']);
+        $this->course = $gen->create_course(['fullname' => 'Quality Management Basics']);
+        $this->instance = $gen->create_module('virtualbadge', ['course' => $this->course->id, 'name' => 'Certificate QM']);
     }
 
     /**
@@ -79,7 +79,7 @@ final class issues_test extends \advanced_testcase {
         $result = (new issues())->get_result();
         $this->assertSame(result::WARNING, $result->get_status());
         $this->assertStringContainsString('Being retried: 1', $result->get_summary());
-        $this->assertStringContainsString('Zertifikat QM', $result->get_details());
+        $this->assertStringContainsString('Certificate QM', $result->get_details());
         $this->assertStringContainsString('unavailable', $result->get_details());
     }
 
