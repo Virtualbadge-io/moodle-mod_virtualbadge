@@ -269,8 +269,26 @@ final class api_client_test extends \advanced_testcase {
             $this->assertSame(429, $e->status);
             $this->assertTrue($e->is_temporary());
             $this->assertGreaterThan(3500, $e->retryafter);
+            $this->assertTrue($e->ownlimit);
         }
         $this->assertCount(0, $client->requests);
+    }
+
+    public function test_check_slot_does_not_reserve_a_call(): void {
+        set_config('ratelimit', '2', 'mod_virtualbadge');
+        $client = $this->client(array_fill(0, 2, [200, ['id' => 'recp_1']]));
+        $client->check_slot('main');
+        $client->check_slot('main');
+        $client->status('main', 'recp_1');
+        $client->status('main', 'recp_1');
+        try {
+            $client->check_slot('main');
+            $this->fail('Exception expected');
+        } catch (api_exception $e) {
+            $this->assertSame(429, $e->status);
+            $this->assertTrue($e->ownlimit);
+        }
+        $this->assertCount(2, $client->requests);
     }
 
     public function test_hourly_limit_is_configurable(): void {

@@ -118,9 +118,15 @@ final class backup_restore_test extends \advanced_testcase {
      * @param \stdClass $course
      * @param bool $users
      * @param int|null $restorer user who restores, default the current user
+     * @param string $role role of the restorer in the new course
      * @return int id of the new course
      */
-    protected function backup_and_restore(\stdClass $course, bool $users, ?int $restorer = null): int {
+    protected function backup_and_restore(
+        \stdClass $course,
+        bool $users,
+        ?int $restorer = null,
+        string $role = 'editingteacher'
+    ): int {
         global $DB, $USER;
         $bc = new \backup_controller(
             \backup::TYPE_1COURSE,
@@ -139,8 +145,7 @@ final class backup_restore_test extends \advanced_testcase {
         $file->extract_to_pathname(get_file_packer('application/vnd.moodle.backup'), make_backup_temp_directory($backupid));
         $newcourseid = \restore_dbops::create_new_course('Restored', 'RESTORED' . random_string(4), $course->category);
         if ($restorer) {
-            $role = $DB->get_field('role', 'id', ['shortname' => 'editingteacher']);
-            role_assign($role, $restorer, \context_course::instance($newcourseid));
+            role_assign($DB->get_field('role', 'id', ['shortname' => $role]), $restorer, \context_course::instance($newcourseid));
         }
         $rc = new \restore_controller(
             $backupid,
@@ -215,20 +220,56 @@ final class backup_restore_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->setAdminUser();
         $gen = $this->getDataGenerator();
+        set_config('orgs', 'partner|Partner academy', 'mod_virtualbadge');
         $course = $gen->create_course();
         $student = $gen->create_and_enrol($course, 'student');
         $instance = $gen->create_module('virtualbadge', ['course' => $course->id]);
-        $DB->set_field('virtualbadge', 'org', 'elsewhere', ['id' => $instance->id]);
         $id = $this->add_issue($instance, $student->id, issuer::STATUS_ISSUED, 'recp_1');
-        $DB->set_field('virtualbadge_issues', 'org', 'elsewhere', ['id' => $id]);
+        $DB->set_field('virtualbadge_issues', 'org', 'partner', ['id' => $id]);
 
         $newcourseid = $this->backup_and_restore($course, true);
 
         $restored = $DB->get_record('virtualbadge', ['course' => $newcourseid], '*', MUST_EXIST);
         $this->assertSame('main', $restored->org);
         $issue = $DB->get_record('virtualbadge_issues', ['virtualbadgeid' => $restored->id], '*', MUST_EXIST);
-        $this->assertSame('elsewhere', $issue->org);
+        $this->assertSame('partner', $issue->org);
         $this->assertSame('recp_1', $issue->remoteid);
+    }
+
+    public function test_restore_drops_certificates_of_other_organisations(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $gen = $this->getDataGenerator();
+        set_config('orgs', 'partner|Partner academy', 'mod_virtualbadge');
+        $course = $gen->create_course();
+        $student = $gen->create_and_enrol($course, 'student');
+        $other = $gen->create_and_enrol($course, 'student');
+        $third = $gen->create_and_enrol($course, 'student');
+        $manager = $gen->create_user();
+        $instance = $gen->create_module('virtualbadge', ['course' => $course->id]);
+        $this->add_issue($instance, $student->id, issuer::STATUS_ISSUED, 'recp_1');
+        $id = $this->add_issue($instance, $other->id, issuer::STATUS_ISSUED, 'recp_2');
+        $DB->set_field('virtualbadge_issues', 'org', 'partner', ['id' => $id]);
+        $id = $this->add_issue($instance, $third->id, issuer::STATUS_ISSUED, 'recp_3');
+        $DB->set_field('virtualbadge_issues', 'org', 'unknown', ['id' => $id]);
+
+        $bymanager = $this->backup_and_restore($course, true, $manager->id, 'manager');
+        $this->assertEquals(2, $DB->count_records_select(
+            'backup_logs',
+            $DB->sql_like('message', ':message'),
+            ['message' => 'virtualbadge: certificate of user%']
+        ));
+        $restored = $DB->get_field('virtualbadge', 'id', ['course' => $bymanager]);
+        $issues = $DB->get_records('virtualbadge_issues', ['virtualbadgeid' => $restored], '', 'remoteid, org');
+        $this->assertSame(['recp_1'], array_keys($issues));
+        $this->assertSame('main', $issues['recp_1']->org);
+
+        $byadmin = $this->backup_and_restore($course, true);
+        $restored = $DB->get_field('virtualbadge', 'id', ['course' => $byadmin]);
+        $issues = $DB->get_records('virtualbadge_issues', ['virtualbadgeid' => $restored], 'remoteid', 'remoteid, org');
+        $this->assertSame(['recp_1', 'recp_2'], array_keys($issues));
+        $this->assertSame('partner', $issues['recp_2']->org);
     }
 
     public function test_course_restore_with_user_data(): void {

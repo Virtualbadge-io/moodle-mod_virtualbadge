@@ -67,6 +67,9 @@ class issuer {
     /** Participants a trainer action queues directly, more are queued by a background task. */
     public const QUEUE_DIRECT_MAX = 50;
 
+    /** @var int seconds over which tasks postponed by the plugin's own limit are spread */
+    public const LIMIT_SPREAD = 3600;
+
     /**
      * Activities in a course with a given trigger.
      *
@@ -223,6 +226,7 @@ class issuer {
         $api = \core\di::get(api_client::class);
 
         try {
+            $api->check_slot($instance->org);
             $template = self::find_template($api, $instance);
             if ($template === null) {
                 $issue->attempts++;
@@ -409,10 +413,12 @@ class issuer {
     protected static function handle_error(stdClass $issue, api_exception $e): void {
         global $DB;
         if ($e->status === 429) {
-            $issue->status = self::STATUS_RETRYING;
-            $issue->lasterror = $e->getMessage();
-            $issue->timemodified = time();
-            $DB->update_record('virtualbadge_issues', $issue);
+            if ($issue->status !== self::STATUS_RETRYING || $issue->lasterror !== $e->getMessage()) {
+                $issue->status = self::STATUS_RETRYING;
+                $issue->lasterror = $e->getMessage();
+                $issue->timemodified = time();
+                $DB->update_record('virtualbadge_issues', $issue);
+            }
             self::schedule_issue($issue->id, self::wait_seconds($e));
             return;
         }
@@ -428,13 +434,15 @@ class issuer {
     }
 
     /**
-     * Seconds to wait after a reached limit.
+     * Seconds to wait after a reached limit. Tasks that hit the limit together get different
+     * times: at the plugin's own limit spread over one more hour, at the API's limit over the wait time.
      *
      * @param api_exception $e
      * @return int
      */
-    protected static function wait_seconds(api_exception $e): int {
-        return max(1, $e->retryafter ?? 60);
+    public static function wait_seconds(api_exception $e): int {
+        $wait = max(1, $e->retryafter ?? 60);
+        return $wait + random_int(0, $e->ownlimit ? self::LIMIT_SPREAD : $wait);
     }
 
     /**

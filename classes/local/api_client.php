@@ -317,31 +317,70 @@ class api_client {
     }
 
     /**
+     * Fail if the hourly limit of the organisation's API key is reached, without reserving a call.
+     * Lets a task give up before it builds the recipient.
+     *
+     * @param string $org
+     * @throws api_exception 429 when no call is left
+     */
+    public function check_slot(string $org): void {
+        $limit = config::rate_limit($org);
+        if ($limit === 0) {
+            return;
+        }
+        $key = $this->key_hash($org);
+        $this->assert_below_limit($this->recent_calls($key), $limit);
+    }
+
+    /**
      * Reserve one call within the hourly limit of the organisation's API key.
      *
      * @param string $org
+     * @throws api_exception 429 when no call is left
      */
     protected function take_slot(string $org): void {
         $limit = config::rate_limit($org);
         if ($limit === 0) {
             return;
         }
-        $cache = \cache::make('mod_virtualbadge', 'ratelimit');
         $key = $this->key_hash($org);
         $lock = \core\lock\lock_config::get_lock_factory('mod_virtualbadge_ratelimit')->get_lock($key, self::LOCK_TIMEOUT);
         if (!$lock) {
-            throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), self::LOCK_TIMEOUT);
+            throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), self::LOCK_TIMEOUT, true);
         }
         try {
-            $now = time();
-            $calls = array_values(array_filter($cache->get($key) ?: [], fn($t) => $t > $now - 3600));
-            if (count($calls) >= $limit) {
-                throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), $calls[0] + 3600 - $now);
-            }
-            $calls[] = $now;
-            $cache->set($key, $calls);
+            $calls = $this->recent_calls($key);
+            $this->assert_below_limit($calls, $limit);
+            $calls[] = time();
+            \cache::make('mod_virtualbadge', 'ratelimit')->set($key, $calls);
         } finally {
             $lock->release();
+        }
+    }
+
+    /**
+     * Times of the calls within the last hour, oldest first.
+     *
+     * @param string $key
+     * @return int[]
+     */
+    protected function recent_calls(string $key): array {
+        $since = time() - 3600;
+        $calls = \cache::make('mod_virtualbadge', 'ratelimit')->get($key) ?: [];
+        return array_values(array_filter($calls, fn($t) => $t > $since));
+    }
+
+    /**
+     * Throw when the calls of the last hour reach the limit, with the time until the oldest one expires.
+     *
+     * @param int[] $calls
+     * @param int $limit
+     * @throws api_exception
+     */
+    protected function assert_below_limit(array $calls, int $limit): void {
+        if (count($calls) >= $limit) {
+            $wait = max(1, $calls[count($calls) - $limit] + 3600 - time());
+            throw new api_exception(429, get_string('apiratelimit', 'mod_virtualbadge'), $wait, true);
         }
     }
 

@@ -1,5 +1,10 @@
 # Changes
 
+## 1.1.4 (2026-11-03)
+
+- Certificates waiting for the hourly limit are spread over the following hour instead of all starting again at the same moment, and a task checks the limit before it builds the certificate data
+- On restore, a certificate keeps its organisation only if the restoring user may choose that organisation; otherwise it is not restored and the restore log says so
+
 ## 1.1.3 (2026-11-02)
 
 - "Retry issuing" of a failed certificate first looks for a certificate already created in Virtualbadge, so a lost response no longer leads to a duplicate

@@ -30,16 +30,21 @@ class api_exception extends \moodle_exception {
     /** @var int|null seconds to wait before the next attempt */
     public ?int $retryafter;
 
+    /** @var bool the plugin's own hourly limit is reached, not the one of the API */
+    public bool $ownlimit;
+
     /**
      * Constructor.
      *
      * @param int $status
      * @param string $detail
      * @param int|null $retryafter
+     * @param bool $ownlimit
      */
-    public function __construct(int $status, string $detail, ?int $retryafter = null) {
+    public function __construct(int $status, string $detail, ?int $retryafter = null, bool $ownlimit = false) {
         $this->status = $status;
         $this->retryafter = $retryafter;
+        $this->ownlimit = $ownlimit;
         parent::__construct('apierror', 'mod_virtualbadge', '', (object) ['status' => $status, 'detail' => $detail]);
     }
 

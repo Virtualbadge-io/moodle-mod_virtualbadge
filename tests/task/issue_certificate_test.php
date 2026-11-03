@@ -278,7 +278,33 @@ final class issue_certificate_test extends \advanced_testcase {
         $this->assertStringContainsString('limit', $issue->lasterror);
         $times = array_map(fn($t) => $t->get_next_run_time(), \core\task\manager::get_adhoc_tasks(issue_certificate::class));
         $this->assertGreaterThanOrEqual(time() + 1790, max($times));
-        $this->assertLessThanOrEqual(time() + 1800, max($times));
+        $this->assertLessThanOrEqual(time() + 3600, max($times));
+    }
+
+    public function test_own_limit_stops_before_the_recipient_is_built(): void {
+        $api = $this->mock_api();
+        $api->method('check_slot')->willThrowException(new api_exception(429, 'limit', 60, true));
+        $api->expects($this->never())->method('templates');
+        $api->expects($this->never())->method('issue');
+
+        $this->run_issue_task();
+
+        $issue = $this->issue();
+        $this->assertSame(issuer::STATUS_RETRYING, $issue->status);
+        $this->assertEquals(0, $issue->attempts);
+    }
+
+    public function test_tasks_at_own_limit_wake_up_spread(): void {
+        $e = new api_exception(429, 'limit', 60, true);
+        $waits = array_map(fn() => issuer::wait_seconds($e), range(1, 50));
+        $this->assertGreaterThanOrEqual(60, min($waits));
+        $this->assertLessThanOrEqual(60 + issuer::LIMIT_SPREAD, max($waits));
+        $this->assertGreaterThan(40, count(array_unique($waits)));
+
+        $e = new api_exception(429, 'limit', 60);
+        $waits = array_map(fn() => issuer::wait_seconds($e), range(1, 50));
+        $this->assertGreaterThanOrEqual(60, min($waits));
+        $this->assertLessThanOrEqual(120, max($waits));
     }
 
     public function test_status_check_at_limit_keeps_its_number(): void {
@@ -298,6 +324,7 @@ final class issue_certificate_test extends \advanced_testcase {
         $task = reset($tasks);
         $this->assertSame(3, $task->get_custom_data()->check);
         $this->assertGreaterThanOrEqual(time() + 590, $task->get_next_run_time());
+        $this->assertLessThanOrEqual(time() + 1200, $task->get_next_run_time());
     }
 
     public function test_reference_contains_the_issue(): void {

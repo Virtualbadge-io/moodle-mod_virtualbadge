@@ -41,6 +41,9 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
     /** @var int[] restored issues still being generated */
     protected array $pending = [];
 
+    /** @var array|null organisations the restoring user may use */
+    protected ?array $allowedorgs = null;
+
     /**
      * Define the structure.
      *
@@ -63,8 +66,7 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
         global $DB;
         $data = (object) $data;
         $data->course = $this->get_courseid();
-        $allowed = config::allowed_orgs((int) $data->course, null, (int) $this->task->get_userid());
-        if (!isset($allowed[$data->org ?? ''])) {
+        if (!isset($this->allowed_orgs()[$data->org ?? ''])) {
             $data->org = config::course_org((int) $data->course);
         }
         $newid = $DB->insert_record('virtualbadge', $data);
@@ -74,6 +76,7 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
     /**
      * Restore one issued certificate. Ids and links are checked as if they came from the API.
      * The certificate stays in the organisation it was issued in, even if the activity moves to another one.
+     * A certificate of an organisation the restoring user may not choose is not restored.
      *
      * @param array $data
      */
@@ -93,11 +96,15 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
             $data->$field = api_client::https_url($data->$field ?? null);
         }
         $data->virtualbadgeid = $this->get_new_parentid('virtualbadge');
-        if (empty($data->org) || !preg_match('/^[A-Za-z0-9_-]+$/', $data->org)) {
-            $data->org = $DB->get_field('virtualbadge', 'org', ['id' => $data->virtualbadgeid]);
-        }
         $data->userid = $this->get_mappingid('user', $data->userid);
         if (!$data->userid) {
+            return;
+        }
+        if (empty($data->org)) {
+            $data->org = $DB->get_field('virtualbadge', 'org', ['id' => $data->virtualbadgeid]);
+        } else if (!isset($this->allowed_orgs()[$data->org])) {
+            $this->log('virtualbadge: certificate of user ' . $data->userid . ' not restored, it belongs to an organisation ' .
+                'that is not configured or may not be chosen by the restoring user', backup::LOG_WARNING);
             return;
         }
         $data->reference = issuer::reference($this->task->get_moduleid(), $data->userid);
@@ -111,6 +118,18 @@ class restore_virtualbadge_activity_structure_step extends restore_activity_stru
         if ($data->status === issuer::STATUS_PENDING) {
             $this->pending[] = $newid;
         }
+    }
+
+    /**
+     * Organisations the restoring user may use in the target course.
+     *
+     * @return array
+     */
+    protected function allowed_orgs(): array {
+        if ($this->allowedorgs === null) {
+            $this->allowedorgs = config::allowed_orgs((int) $this->get_courseid(), null, (int) $this->task->get_userid());
+        }
+        return $this->allowedorgs;
     }
 
     /**
